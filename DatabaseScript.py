@@ -37,20 +37,27 @@
 import mysql.connector
 import sqlite3
 import time
+import ast
 
-def createArticlesTable(cursor, liteConn):
+def createArticlesTable(db, cursor, liteConn):
     seconds = time.time()
-    cursor.execute("CREATE TABLE IF NOT EXISTS Article (ArticleId INTEGER PRIMARY KEY, PrimaryAuthorId INTEGER, CitedBy INTEGER, Citations INTEGER, Title TEXT NOT NULL, Year INTEGER, Url TEXT, Publisher TEXT, Journal TEXT)")
+    cursor.execute("CREATE TABLE IF NOT EXISTS Article (ArticleId INTEGER PRIMARY KEY, PrimaryAuthorId INTEGER, CitedBy INTEGER, Citations INTEGER, Title TEXT NOT NULL, Year INTEGER, Url TEXT, Publisher TEXT, Journal TEXT, FOREIGN KEY (PrimaryAuthorId) REFERENCES Author(AuthorId))")
     liteCur = liteConn.cursor()
     liteCur.execute('SELECT * FROM googlescholararticles')
     i = 0
     for row in liteCur:
-        if i % 100 == 0:
+        # Progress
+        if i == 100:
+            break
             print(i/113298675*100)
         i += 1
+
+        # Get authorId
         innerCur = liteConn.cursor()
         innerCur.execute("SELECT id FROM googlescholarauthors WHERE name='" + row["name"].replace("'", "''") + "'")
         PrimaryAuthorId = innerCur.fetchone()
+
+        # Process potentially empty attributes
         citedBy = None
         citations = None
         year = None
@@ -60,33 +67,75 @@ def createArticlesTable(cursor, liteConn):
             citations = row["citations"]
         if (not row["pub_year"] == ''):
             year = row["pub_year"]
+
+        # Insert into database
         values = (row["id"], PrimaryAuthorId["id"], citedBy, citations, row["pub_title"], year, row["pub_url"], row["pub_publisher"], row["journal"])
         cursor.execute("INSERT INTO Article VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)", values)
+    db.commit()
+    print("FINISHED!")
+    finalSeconds = time.time()
+    print("Seconds to run: " + str(finalSeconds - seconds))
+
+def createAuthorTable(db, liteConn):
+    seconds = time.time()
+    cursor = db.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS Author (AuthorId INTEGER PRIMARY KEY, Name TEXT NOT NULL, Affiliation TEXT, CitedBy INTEGER, HIndex INTEGER, I10Index INTEGER)")
+    liteCur = liteConn.cursor()
+    liteCur.execute('SELECT * FROM googlescholarauthors')
+    i = 0
+    for row in liteCur:
+        # Progress
+        if i % 1000 == 0:
+            print(i/5530376*100)
+        i += 1
+
+        # Process potentially empty attributes
+        citedBy = None
+        hindex = None
+        iindex = None
+        try:
+            attributes = ast.literal_eval(row["attributes"])
+            hindex = attributes[2]
+            iindex = attributes[4]
+        except:
+            pass
+        if (not row["citedby"] == ''):
+            citedBy = int(row["citedby"])
+
+        # Insert into database
+        values = (row["id"], row["name"], row["affiliation"], citedBy, hindex, iindex)
+        cursor.execute("INSERT INTO Author VALUES (%s, %s, %s, %s, %s, %s)", values)
+    db.commit()
     print("FINISHED!")
     finalSeconds = time.time()
     print("Seconds to run: " + str(finalSeconds - seconds))
 
 def displayTableData(cursor, table):
-    cursor.execute("SELECT * FROM " + table)
+    cursor.execute("SELECT * FROM " + table + " WHERE ArticleId < 10")
     for row in cursor:
         print(row)
 
 def dropTable(cursor, table):
     cursor.execute("DROP TABLE " + table)
 
+
+# Main program:
 mydb = mysql.connector.connect(
     host="localhost",
     user="root",
     passwd="password",
     auth_plugin='mysql_native_password',
-    database="googleScholar"
+    database="googleScholar",
+    autocommit=True
 )
-
 mycursor = mydb.cursor()
 # mycursor.execute("CREATE DATABASE IF NOT EXISTS googleScholar") # Execute only once before defining database above
 liteConn = sqlite3.connect("google-scholar.db")
 liteConn.row_factory = sqlite3.Row
 
-# dropTable(mycursor, "Article")
-createArticlesTable(mycursor, liteConn)
+
+dropTable(mycursor, "Author")
+createAuthorTable(mydb, liteConn)
+# createArticlesTable(mydb, mycursor, liteConn)
 # displayTableData(mycursor, "Article")
+mydb.commit()
