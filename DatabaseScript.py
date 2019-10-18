@@ -38,17 +38,96 @@ import mysql.connector
 import sqlite3
 import time
 import ast
+import numpy as np
 
-def createArticlesTable(db, cursor, liteConn):
+def createInterestedInTable(db, liteConn):
     seconds = time.time()
+    cursor = db.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS InterestedIn (AuthorId INTEGER, Interest VARCHAR(255), PRIMARY KEY (AuthorId, Interest), FOREIGN KEY (AuthorID) REFERENCES Author(AuthorId))")
+    liteCur = liteConn.cursor()
+    liteCur.execute('SELECT * FROM googlescholarauthors')
+    i = 0
+    for row in liteCur:
+        # Progress
+        if i % 100 == 0:
+            print(i/5530376*100)
+        i += 1
+
+        interests = row["interests"]
+        if not interests == '':
+            interestsArray = interests.split(', ')
+            for interest in np.unique(interestsArray):
+                try:
+                    cursor.execute("INSERT INTO InterestedIn VALUES (%s, %s)", (row["id"], interest))
+                except:
+                    pass
+    db.commit()
+    print("FINISHED!")
+    finalSeconds = time.time()
+    print("Seconds to run: " + str(finalSeconds - seconds))
+
+# Not finished:
+# def createAuthoredTable(db, liteConn):
+#     seconds = time.time()
+#     cursor = db.cursor()
+#     cursor.execute("CREATE TABLE IF NOT EXISTS Authored (AuthorId INTEGER, ArticleId INTEGER, PRIMARY KEY(AuthorId, ArticleId), FOREIGN KEY AuthorId REFERENCES Author(AuthorId), FOREIGN KEY ArticleId REFERENCES Article(ArticleId))")
+#     liteCur = liteConn.cursor()
+#     liteCur.execute('SELECT * FROM googlescholararticles')
+#     i = 0
+#     for row in liteCur:
+#         # Progress
+#         if i % 100 == 0:
+#             print(i/113298675*100)
+#         i += 1
+
+#         try:
+#             authors = row["pub_author"]
+#             if not(authors == ''):
+
+#             for year in yearsObject:
+#                 cursor.execute("INSERT INTO YearlyCitations VALUES (%s, %s, %s)", (row["id"], year, yearsObject[year]))
+#         except:
+#             pass
+#     db.commit()
+#     print("FINISHED!")
+#     finalSeconds = time.time()
+#     print("Seconds to run: " + str(finalSeconds - seconds))
+
+def createYearlyCitationsTable(db, liteConn):
+    seconds = time.time()
+    cursor = db.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS YearlyCitations (AuthorId INTEGER, Year INTEGER, Citations INTEGER NOT NULL, PRIMARY KEY (AuthorId, Year),FOREIGN KEY (AuthorID) REFERENCES Author(AuthorId))")
+    liteCur = liteConn.cursor()
+    liteCur.execute('SELECT * FROM googlescholarauthors')
+    i = 0
+    for row in liteCur:
+        # Progress
+        if i % 100 == 0:
+            print(i/5530376*100)
+        i += 1
+
+        try:
+            attributes = ast.literal_eval(row["attributes"])
+            yearsObject = attributes[7]
+            for year in yearsObject:
+                cursor.execute("INSERT INTO YearlyCitations VALUES (%s, %s, %s)", (row["id"], year, yearsObject[year]))
+        except:
+            pass
+    db.commit()
+    print("FINISHED!")
+    finalSeconds = time.time()
+    print("Seconds to run: " + str(finalSeconds - seconds))
+
+def createArticlesTable(db, liteConn):
+    seconds = time.time()
+    cursor = db.cursor()
     cursor.execute("CREATE TABLE IF NOT EXISTS Article (ArticleId INTEGER PRIMARY KEY, PrimaryAuthorId INTEGER, CitedBy INTEGER, Citations INTEGER, Title TEXT NOT NULL, Year INTEGER, Url TEXT, Publisher TEXT, Journal TEXT, FOREIGN KEY (PrimaryAuthorId) REFERENCES Author(AuthorId))")
     liteCur = liteConn.cursor()
     liteCur.execute('SELECT * FROM googlescholararticles')
     i = 0
     for row in liteCur:
         # Progress
-        if i == 100:
-            break
+        if i % 1000 == 0:
             print(i/113298675*100)
         i += 1
 
@@ -111,7 +190,7 @@ def createAuthorTable(db, liteConn):
     print("Seconds to run: " + str(finalSeconds - seconds))
 
 def displayTableData(cursor, table):
-    cursor.execute("SELECT * FROM " + table + " WHERE ArticleId < 10")
+    cursor.execute("SELECT * FROM " + table)
     for row in cursor:
         print(row)
 
@@ -134,8 +213,10 @@ liteConn = sqlite3.connect("google-scholar.db")
 liteConn.row_factory = sqlite3.Row
 
 
-dropTable(mycursor, "Author")
-createAuthorTable(mydb, liteConn)
-# createArticlesTable(mydb, mycursor, liteConn)
-# displayTableData(mycursor, "Article")
+dropTable(mycursor, "InterestedIn")
+# createAuthorTable(mydb, liteConn)
+# createArticlesTable(mydb, liteConn)
+# createYearlyCitationsTable(mydb, liteConn)
+createInterestedInTable(mydb, liteConn)
+# displayTableData(mycursor, "YearlyCitations")
 mydb.commit()
